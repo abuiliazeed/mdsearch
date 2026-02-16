@@ -1,0 +1,87 @@
+[package]
+name = "mdsearch"
+version = "0.1.0"
+edition = "2021"
+authors = ["Ahmed Abuiliazeed <ahmed@abuiliazeed.com>"]
+description = "Blazingly fast markdown search and RAG indexing tool"
+license = "MIT"
+repository = "https://github.com/abuiliazeed/mdsearch"
+keywords = ["markdown", "search", "rag", "cli", "indexing"]
+categories = ["command-line-utilities", "text-processing"]
+
+[[bin]]
+name = "mdsearch"
+path = "src/main.rs"
+
+[lib]
+name = "mdsearch"
+path = "src/lib.rs"
+
+[dependencies]
+# CLI
+clap = { version = "4", features = ["derive", "env", "color"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+bincode = "1"
+
+# Markdown parsing
+pulldown-cmark = "0.9"
+
+# Parallelism
+rayon = "1"
+
+# Storage
+rocksdb = { version = "0.22", default-features = false, features = ["lz4", "snappy"] }
+
+# FST for fast keyword search
+fst = "0.4"
+
+# Error handling
+thiserror = "1"
+anyhow = "1"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Utilities
+memmap2 = "0.9"
+walkdir = "2"
+glob = "0.3"
+ignore = "0.4"  # For .gitignore support
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+
+# SIMD text search (optional but powerful)
+memchr = { version = "2", default-features = false, features = ["std"] }
+
+# Progress indication
+indicatif = "0.17"
+
+# Colored output
+colored = "2"
+
+# File watching
+notify = "6"
+
+# CPU detection
+num_cpus = "1"
+
+[dev-dependencies]
+tempfile = "3"
+criterion = "0.5"
+
+[[bench]]
+name = "search_bench"
+harness = false
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
+opt-level = 3
+
+[profile.dev]
+opt-level = 1
