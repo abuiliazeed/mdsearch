@@ -202,15 +202,11 @@ impl Store {
     /// Store chunks in batch
     pub fn store_chunks_batch(&self, chunks: &[Chunk]) -> Result<()> {
         let cf = self.cf_handle(keys::CHUNKS)?;
-        let mut batch = WriteBatch::default();
 
         for chunk in chunks {
             let key = chunk.id.as_bytes();
-            let value = bincode::serialize(chunk)?;
-            batch.put_cf(&cf, key, value);
+            self.put_value(cf, key, chunk)?;
         }
-
-        self.db.write(batch)?;
 
         self.update_metadata(|m| {
             m.chunk_count += chunks.len() as u64;
@@ -225,12 +221,43 @@ impl Store {
         self.get_value(&cf, id.as_bytes())
     }
 
+    /// Update a chunk (with embedding)
+    pub fn update_chunk(&self, chunk: &Chunk) -> Result<()> {
+        let cf = self.cf_handle(keys::CHUNKS)?;
+        self.put_value(&cf, chunk.id.as_bytes(), chunk)
+    }
+
+    /// Get all chunks
+    pub fn get_all_chunks(&self) -> Result<Vec<Chunk>> {
+        let cf = self.cf_handle(keys::CHUNKS)?;
+        let mut chunks = Vec::new();
+
+        let iter = self.db.iterator_cf(cf, rocksdb::IteratorMode::Start);
+        for item in iter {
+            match item {
+                Ok((key, value)) => {
+                    match bincode::deserialize::<Chunk>(&value) {
+                        Ok(chunk) => chunks.push(chunk),
+                        Err(e) => {
+                            eprintln!("DEBUG: Failed to deserialize chunk: {}", e);
+                        }
+                    }
+                }
+                Err(e) => {
+                    eprintln!("DEBUG: Iterator error: {}", e);
+                }
+            }
+        }
+
+        Ok(chunks)
+    }
+
     /// Get all chunks for a document
     pub fn get_chunks_for_document(&self, doc_path: &str) -> Result<Vec<Chunk>> {
         let cf = self.cf_handle(keys::CHUNKS)?;
         let mut chunks = Vec::new();
 
-        let iter = self.db.iterator_cf(&cf, rocksdb::IteratorMode::Start);
+        let iter = self.db.iterator_cf(cf, rocksdb::IteratorMode::Start);
         for item in iter {
             let (_, value) = item?;
             if let Ok(chunk) = bincode::deserialize::<Chunk>(&value) {
@@ -261,13 +288,13 @@ impl Store {
         let mut results = Vec::new();
         let query_lower = query.to_lowercase();
 
-        let iter = self.db.iterator_cf(&cf, rocksdb::IteratorMode::Start);
+        let iter = self.db.iterator_cf(cf, rocksdb::IteratorMode::Start);
         for item in iter {
             if results.len() >= limit {
                 break;
             }
 
-            let (_, value) = item?;
+            let (key, value) = item?;
             if let Ok(chunk) = bincode::deserialize::<Chunk>(&value) {
                 if chunk.content.to_lowercase().contains(&query_lower) {
                     results.push(chunk);
@@ -289,7 +316,7 @@ impl Store {
         let cf = self.cf_handle(keys::DOCUMENTS)?;
         let mut docs = Vec::new();
 
-        let iter = self.db.iterator_cf(&cf, rocksdb::IteratorMode::Start);
+        let iter = self.db.iterator_cf(cf, rocksdb::IteratorMode::Start);
         for item in iter {
             let (_, value) = item?;
             if let Ok(doc) = bincode::deserialize::<DocumentRecord>(&value) {

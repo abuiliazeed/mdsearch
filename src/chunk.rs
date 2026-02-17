@@ -37,6 +37,10 @@ pub struct Chunk {
 
     /// Metadata from frontmatter
     pub metadata: std::collections::HashMap<String, String>,
+
+    /// Embedding vector (for semantic search)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub embedding: Option<Vec<f32>>,
 }
 
 /// Chunker for creating RAG-ready chunks
@@ -146,6 +150,7 @@ impl Chunker {
                 context_after: None,
                 token_count,
                 metadata: metadata.clone(),
+                embedding: None,
             });
         } else {
             // Split into multiple chunks respecting sentence boundaries
@@ -187,6 +192,7 @@ impl Chunker {
                     context_after,
                     token_count,
                     metadata: metadata.clone(),
+                    embedding: None,
                 });
             }
         }
@@ -217,6 +223,7 @@ impl Chunker {
                 context_after: None,
                 token_count,
                 metadata: metadata.clone(),
+                embedding: None,
             });
         }
 

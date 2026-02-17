@@ -7,6 +7,7 @@ use tracing_subscriber::EnvFilter;
 
 mod chunk;
 mod config;
+mod embeddings;
 mod error;
 mod index;
 mod parser;
@@ -98,6 +99,25 @@ enum Commands {
         /// Output format: json, jsonl, plain
         #[arg(short, long, default_value = "plain")]
         format: String,
+
+        /// Embedding provider: mock, openai
+        #[arg(long, default_value = "mock")]
+        provider: String,
+    },
+
+    /// Generate embeddings for indexed chunks
+    Embed {
+        /// Embedding provider: mock, openai
+        #[arg(long, default_value = "mock")]
+        provider: String,
+
+        /// Model name (provider-specific)
+        #[arg(long)]
+        model: Option<String>,
+
+        /// Batch size for embedding API calls
+        #[arg(long, default_value = "100")]
+        batch_size: usize,
     },
 
     /// Chunk markdown files for RAG applications
@@ -123,7 +143,11 @@ enum Commands {
     },
 
     /// Show index statistics
-    Stats,
+    Stats {
+        /// Show detailed chunk information
+        #[arg(long, default_value = "false")]
+        detailed: bool,
+    },
 
     /// Clear the index database
     Clear {
@@ -197,8 +221,16 @@ fn main() -> Result<()> {
             query,
             limit,
             format,
+            provider,
         } => {
-            search::run_semantic(query, index_path, limit, format)?;
+            search::run_semantic(query, index_path, limit, format, provider)?;
+        }
+        Commands::Embed {
+            provider,
+            model,
+            batch_size,
+        } => {
+            embeddings::run_embed(index_path, provider, model, batch_size)?;
         }
         Commands::Chunk {
             path,
@@ -209,8 +241,8 @@ fn main() -> Result<()> {
         } => {
             chunk::run_chunk(path, size, overlap, format, metadata)?;
         }
-        Commands::Stats => {
-            index::run_stats(index_path)?;
+        Commands::Stats { detailed } => {
+            index::run_stats(index_path, detailed)?;
         }
         Commands::Clear { force } => {
             index::run_clear(index_path, force)?;

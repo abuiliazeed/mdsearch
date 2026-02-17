@@ -1,11 +1,12 @@
 //! Search functionality
 
 use crate::chunk::Chunk;
+use crate::embeddings::{cosine_similarity, create_embedder, EmbeddingConfig, EmbeddingProvider};
 use crate::error::{Error, Result};
 use crate::store::Store;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// Search result with relevance scoring
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -139,17 +140,65 @@ impl Searcher {
         Ok(results)
     }
 
-    /// Perform semantic search (placeholder for embedding-based search)
-    pub fn semantic_search(&self, _query: &str) -> Result<Vec<SearchResult>> {
-        // TODO: Implement embedding-based semantic search
-        // This would:
-        // 1. Generate embedding for query
-        // 2. Compare against stored chunk embeddings
-        // 3. Return top-k by cosine similarity
+    /// Perform semantic search using embeddings
+    pub fn semantic_search(&self, query: &str, provider: &str) -> Result<Vec<SearchResult>> {
+        // Create embedder based on provider
+        let embedding_config = EmbeddingConfig {
+            provider: match provider {
+                "openai" => EmbeddingProvider::OpenAI,
+                _ => EmbeddingProvider::Mock,
+            },
+            model: "default".to_string(),
+            dimensions: 384,
+        };
 
-        Err(Error::Search(
-            "Semantic search not yet implemented. Use 'search' for keyword search.".into(),
-        ))
+        let embedder = create_embedder(&embedding_config)?;
+
+        // Generate query embedding
+        let query_embedding = embedder.embed(query)?;
+
+        // Get all chunks with embeddings
+        let chunks = self.store.get_all_chunks()?;
+
+        // Filter chunks that have embeddings
+        let chunks_with_embeddings: Vec<_> = chunks
+            .into_iter()
+            .filter(|c| c.embedding.is_some())
+            .collect();
+
+        if chunks_with_embeddings.is_empty() {
+            return Err(Error::Search(
+                "No embeddings found. Run 'mdsearch embed' first to generate embeddings.".into(),
+            ));
+        }
+
+        // Compute similarities
+        let mut scored: Vec<_> = chunks_with_embeddings
+            .into_iter()
+            .filter_map(|chunk| {
+                let embedding = chunk.embedding.as_ref()?;
+                let score = cosine_similarity(&query_embedding, embedding);
+
+                if score < self.config.min_score {
+                    return None;
+                }
+
+                Some(SearchResult {
+                    chunk,
+                    score,
+                    highlights: Vec::new(),
+                    match_type: MatchType::Semantic,
+                })
+            })
+            .collect();
+
+        // Sort by score (highest first)
+        scored.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap());
+
+        // Limit results
+        scored.truncate(self.config.limit);
+
+        Ok(scored)
     }
 
     fn tokenize(&self, text: &str) -> Vec<String> {
@@ -274,6 +323,7 @@ pub fn run_semantic(
     index_path: PathBuf,
     limit: usize,
     format: String,
+    provider: String,
 ) -> Result<()> {
     if !Store::exists(&index_path) {
         return Err(Error::IndexNotFound(index_path));
@@ -289,7 +339,7 @@ pub fn run_semantic(
 
     let searcher = Searcher::new(store).with_config(config);
 
-    match searcher.semantic_search(&query) {
+    match searcher.semantic_search(&query, &provider) {
         Ok(results) => {
             if results.is_empty() {
                 println!("No semantic results found for: {}", query);
@@ -304,8 +354,7 @@ pub fn run_semantic(
         }
         Err(e) => {
             println!("{}", e);
-            println!("\nTip: Semantic search requires an embedding model.");
-            println!("For now, use 'mdsearch search' for fast keyword search.");
+            println!("\nTip: Run 'mdsearch embed' first to generate embeddings.");
         }
     }
 

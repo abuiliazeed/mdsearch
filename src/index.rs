@@ -328,7 +328,7 @@ pub fn run_index(
 }
 
 /// Run stats command
-pub fn run_stats(index_path: PathBuf) -> Result<()> {
+pub fn run_stats(index_path: PathBuf, detailed: bool) -> Result<()> {
     if !Store::exists(&index_path) {
         return Err(Error::IndexNotFound(index_path));
     }
@@ -344,6 +344,18 @@ pub fn run_stats(index_path: PathBuf) -> Result<()> {
     println!("  Chunks:          {}", meta.chunk_count);
     println!("  Total bytes:     {}", format_bytes(meta.total_bytes));
     println!("  Index path:      {}", store.path().display());
+
+    if detailed {
+        println!("\n📝 Chunks:");
+        let chunks = store.get_all_chunks()?;
+        for chunk in chunks.iter().take(10) {
+            println!("  - {} ({} chars)", chunk.id, chunk.content.len());
+            println!("    Preview: {}...", chunk.content.chars().take(50).collect::<String>());
+        }
+        if chunks.len() > 10 {
+            println!("  ... and {} more", chunks.len() - 10);
+        }
+    }
 
     Ok(())
 }
