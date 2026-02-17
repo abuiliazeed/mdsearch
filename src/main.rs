@@ -17,7 +17,7 @@ mod store;
 #[derive(Parser, Debug)]
 #[command(name = "mdsearch")]
 #[command(author = "Ahmed Abuiliazeed <ahmed@abuiliazeed.com>")]
-#[command(version = "0.1.0")]
+#[command(version = "0.2.0-dev")]
 #[command(about = "Blazingly fast markdown search and RAG indexing", long_about = None)]
 #[command(arg_required_else_help = true)]
 struct Cli {
