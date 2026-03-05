@@ -235,7 +235,7 @@ impl Chunker {
         let mut current_chunk = String::new();
         let mut chunk_start = 0;
         let mut last_sentence_end = 0;
-        let mut pos = 0;
+        let mut pos;
 
         let sentence_enders = ['.', '!', '?', '\n'];
 
@@ -255,8 +255,9 @@ impl Chunker {
 
                     chunks.push((chunk_text, (chunk_start, break_point)));
 
-                    current_chunk = text[break_point..].chars().collect();
+                    current_chunk = String::new();
                     chunk_start = break_point;
+                    // Reset last_sentence_end to find new sentence boundaries
                     last_sentence_end = break_point;
                 } else {
                     // Force break at target size

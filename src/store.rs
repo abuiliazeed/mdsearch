@@ -188,6 +188,7 @@ impl Store {
     }
 
     /// Store a chunk
+    #[allow(dead_code)]
     pub fn store_chunk(&self, chunk: &Chunk) -> Result<()> {
         let cf = self.cf_handle(keys::CHUNKS)?;
         self.put_value(&cf, chunk.id.as_bytes(), chunk)?;
@@ -216,6 +217,7 @@ impl Store {
     }
 
     /// Get a chunk by ID
+    #[allow(dead_code)]
     pub fn get_chunk(&self, id: &str) -> Result<Option<Chunk>> {
         let cf = self.cf_handle(keys::CHUNKS)?;
         self.get_value(&cf, id.as_bytes())

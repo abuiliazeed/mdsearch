@@ -5,6 +5,7 @@ use thiserror::Error;
 pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Error, Debug)]
+#[allow(dead_code)]
 pub enum Error {
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),

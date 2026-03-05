@@ -6,7 +6,7 @@ use crate::error::{Error, Result};
 use crate::store::Store;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 /// Search result with relevance scoring
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -48,6 +48,7 @@ pub struct Searcher {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct SearchConfig {
     pub limit: usize,
     pub min_score: f32,
