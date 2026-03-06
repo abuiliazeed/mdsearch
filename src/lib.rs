@@ -8,6 +8,7 @@ pub mod config;
 pub mod embeddings;
 pub mod error;
 pub mod index;
+pub mod local_embeddings;
 pub mod parser;
 pub mod search;
 pub mod store;

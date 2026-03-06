@@ -2,6 +2,10 @@
 
 use crate::error::{Error, Result};
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
+
+#[cfg(feature = "local")]
+use crate::local_embeddings::{LocalEmbedder, LocalModelConfig, parse_model_string};
 
 /// Embedding vector type
 pub type Vector = Vec<f32>;
@@ -17,14 +21,22 @@ pub struct EmbeddingConfig {
 
     /// Vector dimensions
     pub dimensions: usize,
+
+    /// Local model path (optional, for bundled models)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model_path: Option<PathBuf>,
+
+    /// Cache directory for downloaded models
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cache_dir: Option<PathBuf>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum EmbeddingProvider {
     /// OpenAI embeddings API
     OpenAI,
 
-    /// Local model via candle (future)
+    /// Local model via candle (GGUF)
     Local,
 
     /// Mock provider for testing
@@ -34,15 +46,16 @@ pub enum EmbeddingProvider {
 impl Default for EmbeddingConfig {
     fn default() -> Self {
         Self {
-            provider: EmbeddingProvider::Mock,
-            model: "mock-embedding".to_string(),
+            provider: EmbeddingProvider::Local,
+            model: "default".to_string(),
             dimensions: 384,
+            model_path: None,
+            cache_dir: None,
         }
     }
 }
 
 /// Embedding provider trait
-#[allow(dead_code)]
 pub trait Embedder: Send + Sync {
     /// Generate embedding for text
     fn embed(&self, text: &str) -> Result<Vector>;
@@ -218,18 +231,42 @@ pub fn create_embedder(config: &EmbeddingConfig) -> Result<Box<dyn Embedder>> {
         EmbeddingProvider::OpenAI => {
             let api_key = std::env::var("OPENAI_API_KEY")
                 .map_err(|_| Error::Search("OPENAI_API_KEY not set".into()))?;
-            Ok(Box::new(OpenAIEmbedder::new(
-                api_key,
-                Some(config.model.clone()),
-            )))
+            Ok(Box::new(OpenAIEmbedder::new(api_key, Some(config.model.clone()))))
         }
         #[cfg(not(feature = "openai"))]
-        EmbeddingProvider::OpenAI => Err(Error::Search(
-            "OpenAI support not compiled in. Rebuild with --features openai".into(),
-        )),
-        EmbeddingProvider::Local => Err(Error::Search(
-            "Local embeddings not yet implemented. Use 'mock' for testing.".into(),
-        )),
+        EmbeddingProvider::OpenAI => {
+            Err(Error::Search("OpenAI support not compiled in. Rebuild with --features openai".into()))
+        }
+        EmbeddingProvider::Local => {
+            #[cfg(feature = "local")]
+            {
+                let (repo_id, filename) = parse_model_string(&config.model);
+
+                let local_config = if let Some(path) = &config.model_path {
+                    // Use bundled/offline model
+                    LocalModelConfig {
+                        repo_id: path.to_string_lossy().to_string(),
+                        filename: "bundled".to_string(),
+                        cache_dir: path.parent().unwrap_or(PathBuf::from(".").as_path()).to_path_buf(),
+                        dimensions: config.dimensions,
+                    }
+                } else if let Some(cache) = &config.cache_dir {
+                    // Custom cache directory
+                    let mut lc = LocalModelConfig::new(repo_id, filename);
+                    lc.cache_dir = cache.clone();
+                    lc
+                } else {
+                    // Default config
+                    LocalModelConfig::new(repo_id, filename)
+                };
+
+                Ok(Box::new(LocalEmbedder::new(&local_config)?))
+            }
+            #[cfg(not(feature = "local"))]
+            {
+                Err(Error::Search("Local embeddings not compiled in. Rebuild with --features local (default)".into()))
+            }
+        }
     }
 }
 
@@ -255,6 +292,8 @@ pub fn run_embed(
     index_path: std::path::PathBuf,
     provider: String,
     model: Option<String>,
+    model_path: Option<PathBuf>,
+    cache_dir: Option<PathBuf>,
     batch_size: usize,
 ) -> Result<()> {
     use crate::store::Store;
@@ -284,22 +323,32 @@ pub fn run_embed(
         return Ok(());
     }
 
-    println!(
-        "Generating embeddings for {} chunks...",
-        chunks_to_embed.len()
-    );
+    println!("Generating embeddings for {} chunks...", chunks_to_embed.len());
 
     // Create embedder
+    let embed_provider = match provider.as_str() {
+        "openai" => EmbeddingProvider::OpenAI,
+        "local" => EmbeddingProvider::Local,
+        "mock" => EmbeddingProvider::Mock,
+        _ => {
+            return Err(Error::Search(format!(
+                "Unknown provider '{}'. Use: local, openai, mock",
+                provider
+            )))
+        }
+    };
+
     let config = EmbeddingConfig {
-        provider: match provider.as_str() {
-            "openai" => EmbeddingProvider::OpenAI,
-            _ => EmbeddingProvider::Mock,
-        },
+        provider: embed_provider,
         model: model.unwrap_or_else(|| "default".to_string()),
         dimensions: 384,
+        model_path,
+        cache_dir,
     };
 
     let embedder = create_embedder(&config)?;
+
+    println!("Using {} ({})", provider, embedder.model_name());
 
     let pb = ProgressBar::new(chunks_to_embed.len() as u64);
     pb.set_style(
@@ -335,8 +384,10 @@ pub fn run_embed(
     pb.finish_with_message(format!("Embedded {} chunks", updated));
 
     println!(
-        "✅ Generated embeddings for {} chunks using {}",
-        updated, provider
+        "✅ Generated embeddings for {} chunks using {} ({})",
+        updated,
+        provider,
+        embedder.model_name()
     );
 
     Ok(())
@@ -379,12 +430,8 @@ mod tests {
     fn test_similar_texts() {
         let embedder = MockEmbedder::new(384);
 
-        let a = embedder
-            .embed("Rust is a systems programming language")
-            .unwrap();
-        let b = embedder
-            .embed("Rust is a systems programming language")
-            .unwrap();
+        let a = embedder.embed("Rust is a systems programming language").unwrap();
+        let b = embedder.embed("Rust is a systems programming language").unwrap();
         let c = embedder.embed("Bananas are yellow").unwrap();
 
         // Same text should have similarity 1.0

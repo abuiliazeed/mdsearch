@@ -147,10 +147,13 @@ impl Searcher {
         let embedding_config = EmbeddingConfig {
             provider: match provider {
                 "openai" => EmbeddingProvider::OpenAI,
+                "local" => EmbeddingProvider::Local,
                 _ => EmbeddingProvider::Mock,
             },
             model: "default".to_string(),
             dimensions: 384,
+            model_path: None,
+            cache_dir: None,
         };
 
         let embedder = create_embedder(&embedding_config)?;

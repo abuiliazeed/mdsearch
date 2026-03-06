@@ -72,9 +72,22 @@ num_cpus = "1"
 # HTTP client for embedding APIs
 reqwest = { version = "0.12", features = ["blocking", "json"], optional = true }
 
+# Local embeddings with candle
+candle-core = { version = "0.8", optional = true }
+candle-nn = { version = "0.8", optional = true }
+candle-transformers = { version = "0.8", optional = true }
+hf-hub = { version = "0.4", features = ["tokio"], optional = true }
+tokenizers = { version = "0.21", optional = true }
+tokio = { version = "1", features = ["rt-multi-thread"], optional = true }
+
+# Config file support
+toml = "0.8"
+dirs = "5"
+
 [features]
-default = []
+default = ["local"]
 openai = ["reqwest"]
+local = ["candle-core", "candle-nn", "candle-transformers", "hf-hub", "tokenizers", "tokio"]
 
 [dev-dependencies]
 tempfile = "3"

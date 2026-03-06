@@ -10,6 +10,7 @@ mod config;
 mod embeddings;
 mod error;
 mod index;
+mod local_embeddings;
 mod parser;
 mod search;
 mod store;
@@ -100,20 +101,28 @@ enum Commands {
         #[arg(short, long, default_value = "plain")]
         format: String,
 
-        /// Embedding provider: mock, openai
-        #[arg(long, default_value = "mock")]
+        /// Embedding provider: local, openai, mock
+        #[arg(long, default_value = "local")]
         provider: String,
     },
 
     /// Generate embeddings for indexed chunks
     Embed {
-        /// Embedding provider: mock, openai
-        #[arg(long, default_value = "mock")]
+        /// Embedding provider: local, openai, mock
+        #[arg(long, default_value = "local")]
         provider: String,
 
-        /// Model name (provider-specific)
-        #[arg(long)]
+        /// Model name or "repo_id:filename" (e.g., "minilm" or "user/repo:model.gguf")
+        #[arg(long, default_value = "minilm")]
         model: Option<String>,
+
+        /// Path to bundled/offline model (skips download)
+        #[arg(long)]
+        model_path: Option<PathBuf>,
+
+        /// Cache directory for downloaded models (default: ~/.cache/mdsearch)
+        #[arg(long)]
+        cache_dir: Option<PathBuf>,
 
         /// Batch size for embedding API calls
         #[arg(long, default_value = "100")]
@@ -161,6 +170,36 @@ enum Commands {
         /// Attempt to repair issues
         #[arg(long)]
         repair: bool,
+    },
+
+    /// Manage embedding models
+    Models {
+        #[command(subcommand)]
+        command: ModelCommands,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+enum ModelCommands {
+    /// List available embedding models
+    List,
+
+    /// Download a model for offline use
+    Download {
+        /// Model name (e.g., "minilm") or "repo_id:filename"
+        #[arg(default_value = "minilm")]
+        model: String,
+
+        /// Cache directory (default: ~/.cache/mdsearch)
+        #[arg(long)]
+        cache_dir: Option<PathBuf>,
+    },
+
+    /// Show model cache status
+    Status {
+        /// Cache directory (default: ~/.cache/mdsearch)
+        #[arg(long)]
+        cache_dir: Option<PathBuf>,
     },
 }
 
@@ -230,9 +269,11 @@ fn main() -> Result<()> {
         Commands::Embed {
             provider,
             model,
+            model_path,
+            cache_dir,
             batch_size,
         } => {
-            embeddings::run_embed(index_path, provider, model, batch_size)?;
+            embeddings::run_embed(index_path, provider, model, model_path, cache_dir, batch_size)?;
         }
         Commands::Chunk {
             path,
@@ -252,7 +293,100 @@ fn main() -> Result<()> {
         Commands::Doctor { repair } => {
             index::run_doctor(index_path, repair)?;
         }
+        Commands::Models { command } => {
+            run_model_command(command)?;
+        }
     }
 
     Ok(())
+}
+
+fn run_model_command(command: ModelCommands) -> Result<()> {
+    use mdsearch::local_embeddings::{self, LocalModelConfig, parse_model_string, default_cache_dir};
+
+    match command {
+        ModelCommands::List => {
+            println!("Available embedding models:\n");
+            println!("{:<40} {:<30} {:>10}", "MODEL", "FILE", "DIMS");
+            println!("{}", "-".repeat(82));
+
+            for (repo, file, dims) in local_embeddings::AVAILABLE_MODELS {
+                println!("{:<40} {:<30} {:>10}", repo, file, dims);
+            }
+
+            println!("\nUsage:");
+            println!("  mdsearch embed --model minilm              # Use default model");
+            println!("  mdsearch embed --model user/repo:model.gguf # Use specific model");
+            println!("  mdsearch models download minilm            # Pre-download for offline use");
+            Ok(())
+        }
+        ModelCommands::Download { model, cache_dir } => {
+            let (repo_id, filename) = parse_model_string(&model);
+
+            let config = if let Some(cache) = cache_dir {
+                LocalModelConfig::new(repo_id, filename).with_cache_dir(cache)
+            } else {
+                LocalModelConfig::new(repo_id, filename)
+            };
+
+            println!("Downloading model: {}:{}", config.repo_id, config.filename);
+            println!("Cache directory: {:?}", config.cache_dir);
+
+            #[cfg(feature = "local")]
+            {
+                let path = local_embeddings::download_model(&config)?;
+                println!("\n✅ Model downloaded to: {:?}", path);
+            }
+
+            #[cfg(not(feature = "local"))]
+            {
+                println!("❌ Local embeddings not compiled in. Rebuild with --features local");
+            }
+            Ok(())
+        }
+        ModelCommands::Status { cache_dir } => {
+            let cache = cache_dir.unwrap_or_else(default_cache_dir);
+
+            println!("Model cache directory: {:?}\n", cache);
+
+            let models_dir = cache.join("models");
+            if !models_dir.exists() {
+                println!("No models downloaded yet.");
+                println!("\nRun 'mdsearch models download minilm' to download the default model.");
+                return Ok(());
+            }
+
+            println!("Downloaded models:\n");
+
+            let mut found = false;
+            if let Ok(entries) = std::fs::read_dir(&models_dir) {
+                for entry in entries.flatten() {
+                    if entry.path().is_dir() {
+                        let repo_name = entry.file_name().to_string_lossy().replace("--", "/");
+                        println!("  📁 {}", repo_name);
+
+                        if let Ok(files) = std::fs::read_dir(entry.path()) {
+                            for file in files.flatten() {
+                                if file.path().extension().map(|e| e == "gguf").unwrap_or(false) {
+                                    let size = file.metadata().map(|m| m.len()).unwrap_or(0);
+                                    let size_mb = size as f64 / (1024.0 * 1024.0);
+                                    println!(
+                                        "     └── {} ({:.1} MB)",
+                                        file.file_name().to_string_lossy(),
+                                        size_mb
+                                    );
+                                    found = true;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if !found {
+                println!("No GGUF models found in cache.");
+            }
+            Ok(())
+        }
+    }
 }
