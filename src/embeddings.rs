@@ -240,24 +240,17 @@ pub fn create_embedder(config: &EmbeddingConfig) -> Result<Box<dyn Embedder>> {
         EmbeddingProvider::Local => {
             #[cfg(feature = "local")]
             {
-                let (repo_id, filename) = parse_model_string(&config.model);
+                let model_id = parse_model_string(&config.model);
 
                 let local_config = if let Some(path) = &config.model_path {
-                    // Use bundled/offline model
-                    LocalModelConfig {
-                        repo_id: path.to_string_lossy().to_string(),
-                        filename: "bundled".to_string(),
-                        cache_dir: path.parent().unwrap_or(PathBuf::from(".").as_path()).to_path_buf(),
-                        dimensions: config.dimensions,
-                    }
+                    // Use bundled/offline model (path to model directory)
+                    LocalModelConfig::new(model_id).with_cache_dir(path.clone())
                 } else if let Some(cache) = &config.cache_dir {
                     // Custom cache directory
-                    let mut lc = LocalModelConfig::new(repo_id, filename);
-                    lc.cache_dir = cache.clone();
-                    lc
+                    LocalModelConfig::new(model_id).with_cache_dir(cache.clone())
                 } else {
                     // Default config
-                    LocalModelConfig::new(repo_id, filename)
+                    LocalModelConfig::new(model_id)
                 };
 
                 Ok(Box::new(LocalEmbedder::new(&local_config)?))

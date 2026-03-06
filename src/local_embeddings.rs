@@ -1,4 +1,4 @@
-//! Local GGUF embeddings using Candle
+//! Local embeddings using Candle transformers
 //!
 //! Supports downloading and running embedding models locally without API calls.
 
@@ -6,17 +6,13 @@ use crate::error::{Error, Result};
 use std::path::PathBuf;
 
 /// Default embedding model (small and fast)
-pub const DEFAULT_MODEL: &str = "second-state/All-MiniLM-L6-v2-Embedding-GGUF";
-pub const DEFAULT_MODEL_FILE: &str = "all-MiniLM-L6-v2-Q4_K_M.gguf";
+pub const DEFAULT_MODEL: &str = "sentence-transformers/all-MiniLM-L6-v2";
 
 /// Model configuration
 #[derive(Debug, Clone)]
 pub struct LocalModelConfig {
-    /// HuggingFace repo ID
-    pub repo_id: String,
-
-    /// Model filename in repo
-    pub filename: String,
+    /// HuggingFace model ID
+    pub model_id: String,
 
     /// Cache directory for downloaded models
     pub cache_dir: PathBuf,
@@ -28,8 +24,7 @@ pub struct LocalModelConfig {
 impl Default for LocalModelConfig {
     fn default() -> Self {
         Self {
-            repo_id: DEFAULT_MODEL.to_string(),
-            filename: DEFAULT_MODEL_FILE.to_string(),
+            model_id: DEFAULT_MODEL.to_string(),
             cache_dir: default_cache_dir(),
             dimensions: 384, // all-MiniLM-L6-v2 has 384 dimensions
         }
@@ -38,10 +33,9 @@ impl Default for LocalModelConfig {
 
 impl LocalModelConfig {
     /// Create config with custom model
-    pub fn new(repo_id: impl Into<String>, filename: impl Into<String>) -> Self {
+    pub fn new(model_id: impl Into<String>) -> Self {
         Self {
-            repo_id: repo_id.into(),
-            filename: filename.into(),
+            model_id: model_id.into(),
             ..Default::default()
         }
     }
@@ -50,19 +44,6 @@ impl LocalModelConfig {
     pub fn with_cache_dir(mut self, path: PathBuf) -> Self {
         self.cache_dir = path;
         self
-    }
-
-    /// Get the full path to the cached model
-    pub fn model_path(&self) -> PathBuf {
-        self.cache_dir
-            .join("models")
-            .join(&self.repo_id.replace('/', "--"))
-            .join(&self.filename)
-    }
-
-    /// Check if model is already downloaded
-    pub fn is_downloaded(&self) -> bool {
-        self.model_path().exists()
     }
 }
 
@@ -73,56 +54,12 @@ pub fn default_cache_dir() -> PathBuf {
         .join("mdsearch")
 }
 
-/// Download model from HuggingFace if not already cached
-#[cfg(feature = "local")]
-pub fn download_model(config: &LocalModelConfig) -> Result<PathBuf> {
-    use hf_hub::api::tokio::Api;
-    use hf_hub::Repo;
-    use std::fs;
-
-    let model_path = config.model_path();
-
-    if model_path.exists() {
-        tracing::info!("Model already cached at {:?}", model_path);
-        return Ok(model_path);
-    }
-
-    // Create parent directories
-    if let Some(parent) = model_path.parent() {
-        fs::create_dir_all(parent)?;
-    }
-
-    println!("Downloading model {}...", config.repo_id);
-    println!("This may take a moment on first run...");
-
-    // Use tokio runtime for async download
-    let rt = tokio::runtime::Runtime::new()
-        .map_err(|e| Error::Search(format!("Failed to create tokio runtime: {}", e)))?;
-
-    let repo_id = config.repo_id.clone();
-    let filename = config.filename.clone();
-
-    rt.block_on(async {
-        let api = Api::new()
-            .map_err(|e| Error::Search(format!("Failed to create HuggingFace API: {}", e)))?;
-
-        let repo = api.repo(Repo::model(repo_id));
-        let downloaded_path = repo
-            .get(&filename)
-            .await
-            .map_err(|e| Error::Search(format!("Failed to download model: {}", e)))?;
-
-        // Copy to our cache location
-        fs::copy(&downloaded_path, &model_path)?;
-
-        Ok::<_, Error>(model_path.clone())
-    })
-}
-
-/// Local embedder using Candle and GGUF models
+/// Local embedder using Candle transformers
 #[cfg(feature = "local")]
 pub struct LocalEmbedder {
-    model_path: PathBuf,
+    model: candle_transformers::models::bert::BertModel,
+    tokenizer: tokenizers::Tokenizer,
+    device: candle_core::Device,
     dimensions: usize,
     model_name: String,
 }
@@ -131,44 +68,173 @@ pub struct LocalEmbedder {
 impl LocalEmbedder {
     /// Create a new local embedder
     pub fn new(config: &LocalModelConfig) -> Result<Self> {
-        let model_path = download_model(config)?;
+        use candle_core::Device;
+        use candle_nn::VarBuilder;
+        use candle_transformers::models::bert::{BertModel, Config, DTYPE};
+        use hf_hub::api::sync::Api;
+        use hf_hub::Repo;
+        use tokenizers::Tokenizer;
+
+        println!("Loading model {}...", config.model_id);
+
+        // Download model files using sync API
+        let api = Api::new()
+            .map_err(|e| Error::Search(format!("Failed to create HuggingFace API: {}", e)))?;
+
+        let api_repo = api.repo(Repo::model(config.model_id.clone()));
+
+        let config_path = api_repo
+            .get("config.json")
+            .map_err(|e| Error::Search(format!("Failed to download config: {}", e)))?;
+
+        let tokenizer_path = api_repo
+            .get("tokenizer.json")
+            .map_err(|e| Error::Search(format!("Failed to download tokenizer: {}", e)))?;
+
+        let model_path = api_repo
+            .get("model.safetensors")
+            .map_err(|e| Error::Search(format!("Failed to download model: {}", e)))?;
+
+        // Load config
+        let config_content = std::fs::read_to_string(&config_path)?;
+        let bert_config: Config = serde_json::from_str(&config_content)
+            .map_err(|e| Error::Search(format!("Failed to parse config: {}", e)))?;
+
+        // Load tokenizer
+        let mut tokenizer = Tokenizer::from_file(&tokenizer_path)
+            .map_err(|e| Error::Search(format!("Failed to load tokenizer: {}", e)))?;
+
+        // Configure tokenizer for batch processing
+        use tokenizers::PaddingParams;
+        let pp = PaddingParams {
+            strategy: tokenizers::PaddingStrategy::BatchLongest,
+            ..Default::default()
+        };
+        tokenizer.with_padding(Some(pp));
+
+        // Use CPU (can add GPU support later with Metal/CUDA features)
+        let device = Device::Cpu;
+
+        // Load model weights
+        let vb = unsafe {
+            VarBuilder::from_mmaped_safetensors(&[&model_path], DTYPE, &device)
+                .map_err(|e| Error::Search(format!("Failed to load model weights: {}", e)))?
+        };
+
+        // Build model
+        let model = BertModel::load(vb, &bert_config)
+            .map_err(|e| Error::Search(format!("Failed to build model: {}", e)))?;
+
+        println!("✅ Model loaded successfully");
 
         Ok(Self {
-            model_path,
+            model,
+            tokenizer,
+            device,
             dimensions: config.dimensions,
-            model_name: config.repo_id.clone(),
+            model_name: config.model_id.clone(),
         })
     }
 
-    /// Load model and generate embeddings
-    ///
-    /// Note: This is a simplified implementation. Full implementation would use
-    /// candle-transformers to load the GGUF model and run inference.
-    fn load_and_embed(&self, texts: &[String]) -> Result<Vec<Vec<f32>>> {
-        // TODO: Implement actual GGUF loading with candle
-        // For now, use a placeholder that indicates the feature is available
-        // but needs full implementation
+    /// Generate embeddings for texts
+    fn encode(&self, texts: &[String]) -> Result<Vec<Vec<f32>>> {
+        use candle_core::Tensor;
+        use candle_transformers::models::bert::DTYPE;
 
-        tracing::warn!(
-            "Local embeddings initialized but GGUF inference not yet implemented. \
-             Model path: {:?}",
-            self.model_path
-        );
+        // Tokenize batch
+        let tokens = self
+            .tokenizer
+            .encode_batch(texts.to_vec(), true)
+            .map_err(|e| Error::Search(format!("Tokenization error: {}", e)))?;
 
-        // Return mock embeddings with correct dimensions
-        // This allows the code to compile and run, but users should use
-        // OpenAI or mock provider until full implementation is complete
-        Ok(texts
+        // Create token ID tensors
+        let token_ids: Vec<Tensor> = tokens
             .iter()
-            .map(|_| vec![0.0f32; self.dimensions])
-            .collect())
+            .map(|t| {
+                let ids = t.get_ids().to_vec();
+                Tensor::new(ids.as_slice(), &self.device)
+            })
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(|e| Error::Search(format!("Failed to create token tensors: {}", e)))?;
+
+        // Create attention mask tensors
+        let attention_masks: Vec<Tensor> = tokens
+            .iter()
+            .map(|t| {
+                let mask = t.get_attention_mask().to_vec();
+                Tensor::new(mask.as_slice(), &self.device)
+            })
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(|e| Error::Search(format!("Failed to create attention mask tensors: {}", e)))?;
+
+        // Stack into batches
+        let token_ids = Tensor::stack(&token_ids, 0)
+            .map_err(|e| Error::Search(format!("Failed to stack token IDs: {}", e)))?;
+
+        let attention_mask = Tensor::stack(&attention_masks, 0)
+            .map_err(|e| Error::Search(format!("Failed to stack attention masks: {}", e)))?;
+
+        let token_type_ids = token_ids
+            .zeros_like()
+            .map_err(|e| Error::Search(format!("Failed to create token type IDs: {}", e)))?;
+
+        // Run forward pass
+        let embeddings = self
+            .model
+            .forward(&token_ids, &token_type_ids, Some(&attention_mask))
+            .map_err(|e| Error::Search(format!("Model forward pass error: {}", e)))?;
+
+        // Apply mean pooling with attention mask
+        let attention_mask_for_pooling = attention_mask
+            .to_dtype(DTYPE)
+            .map_err(|e| Error::Search(format!("Failed to convert attention mask dtype: {}", e)))?
+            .unsqueeze(2)
+            .map_err(|e| Error::Search(format!("Failed to unsqueeze attention mask: {}", e)))?;
+
+        let sum_mask = attention_mask_for_pooling
+            .sum(1)
+            .map_err(|e| Error::Search(format!("Failed to sum attention mask: {}", e)))?;
+
+        let pooled_embeddings = (embeddings
+            .broadcast_mul(&attention_mask_for_pooling)
+            .map_err(|e| Error::Search(format!("Failed to multiply embeddings: {}", e)))?)
+        .sum(1)
+        .map_err(|e| Error::Search(format!("Failed to sum embeddings: {}", e)))?
+        .broadcast_div(&sum_mask)
+        .map_err(|e| Error::Search(format!("Failed to divide embeddings: {}", e)))?;
+
+        // L2 normalize
+        let normalized = normalize_l2(&pooled_embeddings)
+            .map_err(|e| Error::Search(format!("Failed to normalize embeddings: {}", e)))?;
+
+        // Convert to vectors
+        let n_sentences = texts.len();
+        let mut result = Vec::with_capacity(n_sentences);
+
+        for i in 0..n_sentences {
+            let embedding = normalized
+                .get(i)
+                .map_err(|e| Error::Search(format!("Failed to get embedding {}: {}", i, e)))?
+                .to_vec1::<f32>()
+                .map_err(|e| Error::Search(format!("Failed to convert embedding to vector: {}", e)))?;
+
+            result.push(embedding);
+        }
+
+        Ok(result)
     }
+}
+
+/// Normalize embeddings using L2 norm
+#[cfg(feature = "local")]
+fn normalize_l2(v: &candle_core::Tensor) -> candle_core::Result<candle_core::Tensor> {
+    v.broadcast_div(&v.sqr()?.sum_keepdim(1)?.sqrt()?)
 }
 
 #[cfg(feature = "local")]
 impl crate::embeddings::Embedder for LocalEmbedder {
     fn embed(&self, text: &str) -> Result<Vec<f32>> {
-        let embeddings = self.load_and_embed(&[text.to_string()])?;
+        let embeddings = self.encode(&[text.to_string()])?;
         embeddings
             .into_iter()
             .next()
@@ -176,7 +242,7 @@ impl crate::embeddings::Embedder for LocalEmbedder {
     }
 
     fn embed_batch(&self, texts: &[String]) -> Result<Vec<Vec<f32>>> {
-        self.load_and_embed(texts)
+        self.encode(texts)
     }
 
     fn dimensions(&self) -> usize {
@@ -201,42 +267,25 @@ impl LocalEmbedder {
     }
 }
 
-/// Available local models
-pub const AVAILABLE_MODELS: &[(&str, &str, usize)] = &[
-    // (repo_id, filename, dimensions)
-    (
-        "second-state/All-MiniLM-L6-v2-Embedding-GGUF",
-        "all-MiniLM-L6-v2-Q4_K_M.gguf",
-        384,
-    ),
-    (
-        "second-state/All-MiniLM-L6-v2-Embedding-GGUF",
-        "all-MiniLM-L6-v2-Q8_0.gguf",
-        384,
-    ),
-    (
-        "leliuga/all-MiniLM-L6-v2-GGUF",
-        "all-MiniLM-L6-v2-Q4_K_M.gguf",
-        384,
-    ),
+/// Available local models (safetensors format)
+pub const AVAILABLE_MODELS: &[(&str, usize)] = &[
+    // (model_id, dimensions)
+    ("sentence-transformers/all-MiniLM-L6-v2", 384),
+    ("sentence-transformers/all-MiniLM-L12-v2", 384),
+    ("sentence-transformers/bge-small-en", 384),
+    ("sentence-transformers/bge-base-en", 768),
+    ("BAAI/bge-small-en-v1.5", 384),
+    ("BAAI/bge-base-en-v1.5", 768),
 ];
 
-/// Parse model string (format: "repo_id:filename" or just "repo_id")
-pub fn parse_model_string(s: &str) -> (String, String) {
-    if let Some((repo, file)) = s.split_once(':') {
-        (repo.to_string(), file.to_string())
-    } else if s.contains('/') {
-        // Just repo ID, use default filename
-        (s.to_string(), DEFAULT_MODEL_FILE.to_string())
-    } else {
-        // Short name, map to known model
-        match s {
-            "minilm" | "all-minilm" | "default" => (
-                DEFAULT_MODEL.to_string(),
-                DEFAULT_MODEL_FILE.to_string(),
-            ),
-            _ => (s.to_string(), DEFAULT_MODEL_FILE.to_string()),
-        }
+/// Parse model string (short name or full HuggingFace ID)
+pub fn parse_model_string(s: &str) -> String {
+    match s {
+        "minilm" | "all-minilm" | "default" => DEFAULT_MODEL.to_string(),
+        "minilm-l12" => "sentence-transformers/all-MiniLM-L12-v2".to_string(),
+        "bge-small" => "BAAI/bge-small-en-v1.5".to_string(),
+        "bge-base" => "BAAI/bge-base-en-v1.5".to_string(),
+        _ => s.to_string(),
     }
 }
 
@@ -246,28 +295,11 @@ mod tests {
 
     #[test]
     fn test_parse_model_string() {
-        assert_eq!(
-            parse_model_string("minilm"),
-            (DEFAULT_MODEL.to_string(), DEFAULT_MODEL_FILE.to_string())
-        );
+        assert_eq!(parse_model_string("minilm"), DEFAULT_MODEL);
 
         assert_eq!(
-            parse_model_string("user/repo"),
-            ("user/repo".to_string(), DEFAULT_MODEL_FILE.to_string())
+            parse_model_string("sentence-transformers/paraphrase-MiniLM-L6-v2"),
+            "sentence-transformers/paraphrase-MiniLM-L6-v2"
         );
-
-        assert_eq!(
-            parse_model_string("user/repo:model.gguf"),
-            ("user/repo".to_string(), "model.gguf".to_string())
-        );
-    }
-
-    #[test]
-    fn test_model_path() {
-        let config = LocalModelConfig::default();
-        let path = config.model_path();
-
-        assert!(path.ends_with(&config.filename));
-        assert!(path.to_string_lossy().contains("models"));
     }
 }

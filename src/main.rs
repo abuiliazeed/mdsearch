@@ -112,11 +112,11 @@ enum Commands {
         #[arg(long, default_value = "local")]
         provider: String,
 
-        /// Model name or "repo_id:filename" (e.g., "minilm" or "user/repo:model.gguf")
+        /// Model name or HuggingFace ID (e.g., "minilm" or "sentence-transformers/all-MiniLM-L6-v2")
         #[arg(long, default_value = "minilm")]
         model: Option<String>,
 
-        /// Path to bundled/offline model (skips download)
+        /// Path to model cache directory (skips HuggingFace download)
         #[arg(long)]
         model_path: Option<PathBuf>,
 
@@ -124,7 +124,7 @@ enum Commands {
         #[arg(long)]
         cache_dir: Option<PathBuf>,
 
-        /// Batch size for embedding API calls
+        /// Batch size for embedding generation
         #[arg(long, default_value = "100")]
         batch_size: usize,
     },
@@ -302,40 +302,40 @@ fn main() -> Result<()> {
 }
 
 fn run_model_command(command: ModelCommands) -> Result<()> {
-    use mdsearch::local_embeddings::{self, LocalModelConfig, parse_model_string, default_cache_dir};
+    use mdsearch::local_embeddings::{self, LocalEmbedder, LocalModelConfig, parse_model_string, default_cache_dir};
 
     match command {
         ModelCommands::List => {
             println!("Available embedding models:\n");
-            println!("{:<40} {:<30} {:>10}", "MODEL", "FILE", "DIMS");
-            println!("{}", "-".repeat(82));
+            println!("{:<50} {:>10}", "MODEL", "DIMS");
+            println!("{}", "-".repeat(62));
 
-            for (repo, file, dims) in local_embeddings::AVAILABLE_MODELS {
-                println!("{:<40} {:<30} {:>10}", repo, file, dims);
+            for (model, dims) in local_embeddings::AVAILABLE_MODELS {
+                println!("{:<50} {:>10}", model, dims);
             }
 
             println!("\nUsage:");
             println!("  mdsearch embed --model minilm              # Use default model");
-            println!("  mdsearch embed --model user/repo:model.gguf # Use specific model");
+            println!("  mdsearch embed --model sentence-transformers/all-MiniLM-L12-v2");
             println!("  mdsearch models download minilm            # Pre-download for offline use");
             Ok(())
         }
         ModelCommands::Download { model, cache_dir } => {
-            let (repo_id, filename) = parse_model_string(&model);
+            let model_id = local_embeddings::parse_model_string(&model);
 
             let config = if let Some(cache) = cache_dir {
-                LocalModelConfig::new(repo_id, filename).with_cache_dir(cache)
+                LocalModelConfig::new(model_id).with_cache_dir(cache)
             } else {
-                LocalModelConfig::new(repo_id, filename)
+                LocalModelConfig::new(model_id)
             };
 
-            println!("Downloading model: {}:{}", config.repo_id, config.filename);
+            println!("Downloading model: {}", config.model_id);
             println!("Cache directory: {:?}", config.cache_dir);
 
             #[cfg(feature = "local")]
             {
-                let path = local_embeddings::download_model(&config)?;
-                println!("\n✅ Model downloaded to: {:?}", path);
+                let _embedder = LocalEmbedder::new(&config)?;
+                println!("\n✅ Model downloaded and loaded successfully");
             }
 
             #[cfg(not(feature = "local"))]
