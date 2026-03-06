@@ -273,7 +273,9 @@ fn main() -> Result<()> {
             cache_dir,
             batch_size,
         } => {
-            embeddings::run_embed(index_path, provider, model, model_path, cache_dir, batch_size)?;
+            embeddings::run_embed(
+                index_path, provider, model, model_path, cache_dir, batch_size,
+            )?;
         }
         Commands::Chunk {
             path,
@@ -302,7 +304,9 @@ fn main() -> Result<()> {
 }
 
 fn run_model_command(command: ModelCommands) -> Result<()> {
-    use mdsearch::local_embeddings::{self, LocalEmbedder, LocalModelConfig, parse_model_string, default_cache_dir};
+    use mdsearch::local_embeddings::{
+        self, default_cache_dir, parse_model_string, LocalEmbedder, LocalModelConfig,
+    };
 
     match command {
         ModelCommands::List => {
@@ -367,7 +371,12 @@ fn run_model_command(command: ModelCommands) -> Result<()> {
 
                         if let Ok(files) = std::fs::read_dir(entry.path()) {
                             for file in files.flatten() {
-                                if file.path().extension().map(|e| e == "gguf").unwrap_or(false) {
+                                if file
+                                    .path()
+                                    .extension()
+                                    .map(|e| e == "gguf")
+                                    .unwrap_or(false)
+                                {
                                     let size = file.metadata().map(|m| m.len()).unwrap_or(0);
                                     let size_mb = size as f64 / (1024.0 * 1024.0);
                                     println!(

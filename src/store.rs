@@ -3,7 +3,7 @@
 use crate::chunk::Chunk;
 use crate::error::{Error, Result};
 use crate::parser::Document;
-use rocksdb::{ColumnFamily, DB, Options, WriteBatch};
+use rocksdb::{ColumnFamily, Options, WriteBatch, DB};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::sync::Arc;
@@ -120,13 +120,19 @@ impl Store {
     }
 
     /// Put a serialized value into a column family
-    fn put_value<K: AsRef<[u8]>, V: Serialize>(&self, cf: &ColumnFamily, key: K, value: &V) -> Result<()> {
+    fn put_value<K: AsRef<[u8]>, V: Serialize>(
+        &self,
+        cf: &ColumnFamily,
+        key: K,
+        value: &V,
+    ) -> Result<()> {
         let encoded = bincode::serialize(value)?;
-        eprintln!("DEBUG put_value: key={:?}, encoded_len={}", 
-            String::from_utf8_lossy(key.as_ref()), encoded.len());
-        self.db
-            .put_cf(cf, key, encoded)
-            .map_err(Error::from)
+        eprintln!(
+            "DEBUG put_value: key={:?}, encoded_len={}",
+            String::from_utf8_lossy(key.as_ref()),
+            encoded.len()
+        );
+        self.db.put_cf(cf, key, encoded).map_err(Error::from)
     }
 
     /// Get a deserialized value from a column family
@@ -138,8 +144,11 @@ impl Store {
         let key_bytes = key.as_ref();
         match self.db.get_cf(cf, key_bytes)? {
             Some(bytes) => {
-                tracing::debug!("get_value: key={:?}, bytes_len={}", 
-                    String::from_utf8_lossy(key_bytes), bytes.len());
+                tracing::debug!(
+                    "get_value: key={:?}, bytes_len={}",
+                    String::from_utf8_lossy(key_bytes),
+                    bytes.len()
+                );
                 let value = bincode::deserialize(&bytes)?;
                 Ok(Some(value))
             }
@@ -241,8 +250,11 @@ impl Store {
         for item in iter {
             match item {
                 Ok((key, value)) => {
-                    eprintln!("DEBUG get_all_chunks: key={:?}, value_len={}", 
-                        String::from_utf8_lossy(&key), value.len());
+                    eprintln!(
+                        "DEBUG get_all_chunks: key={:?}, value_len={}",
+                        String::from_utf8_lossy(&key),
+                        value.len()
+                    );
                     match bincode::deserialize::<Chunk>(&value) {
                         Ok(chunk) => chunks.push(chunk),
                         Err(e) => {

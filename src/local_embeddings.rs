@@ -165,7 +165,9 @@ impl LocalEmbedder {
                 Tensor::new(mask.as_slice(), &self.device)
             })
             .collect::<std::result::Result<Vec<_>, _>>()
-            .map_err(|e| Error::Search(format!("Failed to create attention mask tensors: {}", e)))?;
+            .map_err(|e| {
+                Error::Search(format!("Failed to create attention mask tensors: {}", e))
+            })?;
 
         // Stack into batches
         let token_ids = Tensor::stack(&token_ids, 0)
@@ -216,7 +218,9 @@ impl LocalEmbedder {
                 .get(i)
                 .map_err(|e| Error::Search(format!("Failed to get embedding {}: {}", i, e)))?
                 .to_vec1::<f32>()
-                .map_err(|e| Error::Search(format!("Failed to convert embedding to vector: {}", e)))?;
+                .map_err(|e| {
+                    Error::Search(format!("Failed to convert embedding to vector: {}", e))
+                })?;
 
             result.push(embedding);
         }

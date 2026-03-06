@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 #[cfg(feature = "local")]
-use crate::local_embeddings::{LocalEmbedder, LocalModelConfig, parse_model_string};
+use crate::local_embeddings::{parse_model_string, LocalEmbedder, LocalModelConfig};
 
 /// Embedding vector type
 pub type Vector = Vec<f32>;
@@ -231,12 +231,15 @@ pub fn create_embedder(config: &EmbeddingConfig) -> Result<Box<dyn Embedder>> {
         EmbeddingProvider::OpenAI => {
             let api_key = std::env::var("OPENAI_API_KEY")
                 .map_err(|_| Error::Search("OPENAI_API_KEY not set".into()))?;
-            Ok(Box::new(OpenAIEmbedder::new(api_key, Some(config.model.clone()))))
+            Ok(Box::new(OpenAIEmbedder::new(
+                api_key,
+                Some(config.model.clone()),
+            )))
         }
         #[cfg(not(feature = "openai"))]
-        EmbeddingProvider::OpenAI => {
-            Err(Error::Search("OpenAI support not compiled in. Rebuild with --features openai".into()))
-        }
+        EmbeddingProvider::OpenAI => Err(Error::Search(
+            "OpenAI support not compiled in. Rebuild with --features openai".into(),
+        )),
         EmbeddingProvider::Local => {
             #[cfg(feature = "local")]
             {
@@ -257,7 +260,10 @@ pub fn create_embedder(config: &EmbeddingConfig) -> Result<Box<dyn Embedder>> {
             }
             #[cfg(not(feature = "local"))]
             {
-                Err(Error::Search("Local embeddings not compiled in. Rebuild with --features local (default)".into()))
+                Err(Error::Search(
+                    "Local embeddings not compiled in. Rebuild with --features local (default)"
+                        .into(),
+                ))
             }
         }
     }
@@ -316,7 +322,10 @@ pub fn run_embed(
         return Ok(());
     }
 
-    println!("Generating embeddings for {} chunks...", chunks_to_embed.len());
+    println!(
+        "Generating embeddings for {} chunks...",
+        chunks_to_embed.len()
+    );
 
     // Create embedder
     let embed_provider = match provider.as_str() {
@@ -423,8 +432,12 @@ mod tests {
     fn test_similar_texts() {
         let embedder = MockEmbedder::new(384);
 
-        let a = embedder.embed("Rust is a systems programming language").unwrap();
-        let b = embedder.embed("Rust is a systems programming language").unwrap();
+        let a = embedder
+            .embed("Rust is a systems programming language")
+            .unwrap();
+        let b = embedder
+            .embed("Rust is a systems programming language")
+            .unwrap();
         let c = embedder.embed("Bananas are yellow").unwrap();
 
         // Same text should have similarity 1.0
