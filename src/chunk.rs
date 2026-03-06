@@ -39,7 +39,6 @@ pub struct Chunk {
     pub metadata: std::collections::HashMap<String, String>,
 
     /// Embedding vector (for semantic search)
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub embedding: Option<Vec<f32>>,
 }
 
