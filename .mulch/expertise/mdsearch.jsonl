@@ -1,0 +1,1 @@
+{"type":"convention","content":"mdsearch uses bincode for serialization. The #[serde(skip_serializing_if)] attribute can cause deserialization failures with bincode because it's a non-self-describing format. Always pair skip_serializing_if with #[serde(default)] to handle missing fields.","classification":"tactical","recorded_at":"2026-03-06T12:39:57.085Z","id":"mx-4eacb7"}
