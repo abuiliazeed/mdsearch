@@ -521,21 +521,6 @@ fn hello() {
 
 This document has multiple sections for testing chunking behavior.
 
-# notes.md
-# Project Notes
-
-## Authentication
-
-We use JWT tokens for authentication. The token expires after 24 hours.
-
-## Database
-
-PostgreSQL is our primary database. We use connection pooling.
-
-## Deployment
-
-The app is deployed on AWS using ECS.
-```
 
 ---
 
