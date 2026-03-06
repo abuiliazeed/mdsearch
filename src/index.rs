@@ -460,26 +460,67 @@ pub fn run_doctor(index_path: PathBuf, repair: bool) -> Result<()> {
     let docs = store.list_documents()?;
     println!("  ✓ {} documents indexed", docs.len());
 
-    // Check for orphaned chunks
+    // Check for orphaned or invalid documents
     let mut orphaned = 0;
+    let mut invalid_count = 0;
     for doc in &docs {
+        let doc_path = Path::new(&doc.path);
+
+        // Check if source file still exists
+        if !doc_path.exists() {
+            invalid_count += 1;
+            if repair {
+                println!("  ⚠ Removing document with missing file: {}", doc.path);
+                store.delete_document(&doc.path)?;
+            }
+            continue;
+        }
+
+        // Check if file has content
+        match std::fs::metadata(doc_path) {
+            Ok(metadata) if metadata.len() == 0 => {
+                invalid_count += 1;
+                if repair {
+                    println!("  ⚠ Removing document with empty file: {}", doc.path);
+                    store.delete_document(&doc.path)?;
+                }
+                continue;
+            }
+            Ok(_) => {}
+            Err(e) => {
+                warn!("Failed to read metadata for {}: {}", doc.path, e);
+                continue;
+            }
+        }
+
+        // Check if chunks exist for this document
         let chunks = store.get_chunks_for_document(&doc.path)?;
         if chunks.is_empty() {
             orphaned += 1;
             if repair {
-                println!("  ⚠ Removing empty document: {}", doc.path);
+                println!("  ⚠ Removing document with no chunks: {}", doc.path);
                 store.delete_document(&doc.path)?;
             }
         }
     }
 
-    if orphaned > 0 {
-        if repair {
-            println!("  ✓ Removed {} orphaned documents", orphaned);
-        } else {
+    if repair {
+        let total_removed = orphaned + invalid_count;
+        if total_removed > 0 {
+            println!("  ✓ Removed {} invalid documents ({} orphaned, {} missing/empty files)",
+                     total_removed, orphaned, invalid_count);
+        }
+    } else {
+        if orphaned > 0 {
             println!(
-                "  ⚠ Found {} orphaned documents (run with --repair to remove)",
+                "  ⚠ Found {} documents with no chunks (run with --repair to remove)",
                 orphaned
+            );
+        }
+        if invalid_count > 0 {
+            println!(
+                "  ⚠ Found {} documents with missing or empty files (run with --repair to remove)",
+                invalid_count
             );
         }
     }
