@@ -113,8 +113,26 @@ impl LocalEmbedder {
         };
         tokenizer.with_padding(Some(pp));
 
-        // Use CPU (can add GPU support later with Metal/CUDA features)
-        let device = Device::Cpu;
+        // Select device: Metal GPU if available, else CPU
+        #[cfg(feature = "metal")]
+        let device = {
+            match Device::new_metal(0) {
+                Ok(metal_device) => {
+                    println!("🚀 Using Metal GPU acceleration");
+                    metal_device
+                }
+                Err(e) => {
+                    eprintln!("⚠️  Metal GPU not available ({}), falling back to CPU", e);
+                    Device::Cpu
+                }
+            }
+        };
+
+        #[cfg(not(feature = "metal"))]
+        let device = {
+            println!("💻 Using CPU (compile with --features metal for GPU acceleration)");
+            Device::Cpu
+        };
 
         // Load model weights
         let vb = unsafe {
