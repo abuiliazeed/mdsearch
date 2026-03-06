@@ -10,3 +10,10 @@
 *.swo
 *~
 .DS_Store
+
+
+.canopy/
+.claude/
+.mulch/
+.overstory/
+.seeds/
