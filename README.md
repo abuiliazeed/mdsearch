@@ -209,15 +209,15 @@ Keyword search.
 ```bash
 mdsearch search "API" --limit 20
 mdsearch search "config" --format json
-mdsearch search "error" --filter "src/"
+mdsearch search "error" -F "src/"
 ```
 
 **Options:**
 - `-n, --limit <n>` - Maximum results (default: 10)
-- `--format <format>` - Output: plain, json, jsonl
+- `-f, --format <format>` - Output: plain, json, jsonl
 - `--headers-only` - Search only in headers
 - `--exclude-code` - Exclude code blocks
-- `--filter <pattern>` - Filter by file path
+- `-F, --filter <pattern>` - Filter by file path
 
 ### `mdsearch semantic <query>`
 

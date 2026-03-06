@@ -84,7 +84,7 @@ enum Commands {
         exclude_code: bool,
 
         /// Filter by file path pattern
-        #[arg(short, long)]
+        #[arg(short = 'F', long)]
         filter: Option<String>,
     },
 
