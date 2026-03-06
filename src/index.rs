@@ -30,9 +30,8 @@ impl Indexer {
             .include_patterns
             .iter()
             .map(|p| {
-                Pattern::new(p).map_err(|e| {
-                    Error::Index(format!("Invalid include pattern '{}': {}", p, e))
-                })
+                Pattern::new(p)
+                    .map_err(|e| Error::Index(format!("Invalid include pattern '{}': {}", p, e)))
             })
             .collect::<Result<Vec<_>>>()?;
 
@@ -41,9 +40,8 @@ impl Indexer {
             .exclude_patterns
             .iter()
             .map(|p| {
-                Pattern::new(p).map_err(|e| {
-                    Error::Index(format!("Invalid exclude pattern '{}': {}", p, e))
-                })
+                Pattern::new(p)
+                    .map_err(|e| Error::Index(format!("Invalid exclude pattern '{}': {}", p, e)))
             })
             .collect::<Result<Vec<_>>>()?;
 
@@ -289,7 +287,8 @@ impl Indexer {
                         if entry_path.is_file() && self.matches_filters(entry_path) {
                             debug!("File changed: {:?}", entry_path);
                             // Reindex the file
-                            if let Some((doc, chunks, terms)) = self.index_file_internal(entry_path) {
+                            if let Some((doc, chunks, terms)) = self.index_file_internal(entry_path)
+                            {
                                 self.store.index_document(&doc)?;
                                 self.store.store_chunks_batch(&chunks)?;
 
@@ -507,8 +506,10 @@ pub fn run_doctor(index_path: PathBuf, repair: bool) -> Result<()> {
     if repair {
         let total_removed = orphaned + invalid_count;
         if total_removed > 0 {
-            println!("  ✓ Removed {} invalid documents ({} orphaned, {} missing/empty files)",
-                     total_removed, orphaned, invalid_count);
+            println!(
+                "  ✓ Removed {} invalid documents ({} orphaned, {} missing/empty files)",
+                total_removed, orphaned, invalid_count
+            );
         }
     } else {
         if orphaned > 0 {
