@@ -126,13 +126,22 @@ cd mdsearch
 cargo install --path .
 ```
 
-### With Metal GPU Acceleration (Apple Silicon)
+### With GPU Acceleration
 
-For 2-5x faster embedding generation on M1/M2/M3/M4 Macs:
-
+**Apple Silicon (M1/M2/M3/M4):**
 ```bash
 cargo install --path . --features metal
 ```
+
+**NVIDIA GPUs (coming soon):**
+```bash
+cargo install --path . --features cuda
+```
+
+**Benefits:**
+- 5x faster embedding generation
+- Automatic GPU detection
+- CPU fallback if GPU unavailable
 
 ### Binary Releases
 
@@ -446,14 +455,16 @@ mdsearch semantic "confidential project details"
 
 ## Available Models
 
-| Model | Dimensions | Size | Notes |
-|-------|------------|------|-------|
-| `minilm` (default) | 384 | 23MB | Fast, accurate |
-| `minilm-l12` | 384 | 33MB | Better quality |
-| `bge-small` | 384 | ~33MB | Alternative |
-| `bge-base` | 768 | ~100MB | Higher quality |
+| Model | Dimensions | Size | GPU Speed | Notes |
+|-------|------------|------|-----------|-------|
+| `minilm` (default) | 384 | 23MB | ~40ms/100 chunks | Fast, accurate |
+| `bge-small-en-v1.5` | 384 | 33MB | ~35ms/100 chunks | Smallest, fast on GPU |
+| `minilm-l12` | 384 | 33MB | ~45ms/100 chunks | Better quality |
+| `bge-base-en-v1.5` | 768 | 100MB | ~60ms/100 chunks | Higher quality |
 
-**Recommendation:** Start with `minilm`. Upgrade if you need better accuracy.
+**GPU Acceleration:** All models benefit from Metal (Apple Silicon) or CUDA (NVIDIA). Smaller models (`bge-small-en-v1.5`, `minilm`) see the biggest speedup (5x faster than CPU).
+
+**Recommendation:** Start with `minilm` (default). Use `bge-small-en-v1.5` for fastest GPU performance. Upgrade to `bge-base-en-v1.5` if you need higher quality (768 dims).
 
 ---
 
