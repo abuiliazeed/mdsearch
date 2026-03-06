@@ -3,7 +3,7 @@
 use crate::chunk::Chunk;
 use crate::error::{Error, Result};
 use crate::parser::Document;
-use rocksdb::{ColumnFamily, DB, Options, WriteBatch};
+use rocksdb::{ColumnFamily, Options, WriteBatch, DB};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::sync::Arc;
@@ -120,11 +120,14 @@ impl Store {
     }
 
     /// Put a serialized value into a column family
-    fn put_value<K: AsRef<[u8]>, V: Serialize>(&self, cf: &ColumnFamily, key: K, value: &V) -> Result<()> {
+    fn put_value<K: AsRef<[u8]>, V: Serialize>(
+        &self,
+        cf: &ColumnFamily,
+        key: K,
+        value: &V,
+    ) -> Result<()> {
         let encoded = bincode::serialize(value)?;
-        self.db
-            .put_cf(cf, key, encoded)
-            .map_err(Error::from)
+        self.db.put_cf(cf, key, encoded).map_err(Error::from)
     }
 
     /// Get a deserialized value from a column family
@@ -237,14 +240,12 @@ impl Store {
         let iter = self.db.iterator_cf(cf, rocksdb::IteratorMode::Start);
         for item in iter {
             match item {
-                Ok((key, value)) => {
-                    match bincode::deserialize::<Chunk>(&value) {
-                        Ok(chunk) => chunks.push(chunk),
-                        Err(e) => {
-                            eprintln!("DEBUG: Failed to deserialize chunk: {}", e);
-                        }
+                Ok((key, value)) => match bincode::deserialize::<Chunk>(&value) {
+                    Ok(chunk) => chunks.push(chunk),
+                    Err(e) => {
+                        eprintln!("DEBUG: Failed to deserialize chunk: {}", e);
                     }
-                }
+                },
                 Err(e) => {
                     eprintln!("DEBUG: Iterator error: {}", e);
                 }

@@ -117,8 +117,8 @@ impl Parser {
 
     /// Parse a markdown file
     pub fn parse_file(&self, path: &Path) -> Result<Document> {
-        let content = std::fs::read_to_string(path)
-            .map_err(|_| Error::FileNotFound(path.to_path_buf()))?;
+        let content =
+            std::fs::read_to_string(path).map_err(|_| Error::FileNotFound(path.to_path_buf()))?;
 
         self.parse(path, &content)
     }
@@ -217,7 +217,11 @@ impl Parser {
         for line in content.lines() {
             if let Some((key, value)) = line.split_once(':') {
                 let key = key.trim().to_string();
-                let value = value.trim().trim_matches('"').trim_matches('\'').to_string();
+                let value = value
+                    .trim()
+                    .trim_matches('"')
+                    .trim_matches('\'')
+                    .to_string();
                 if !key.is_empty() {
                     fields.insert(key, value);
                 }
@@ -233,7 +237,11 @@ impl Parser {
         for line in content.lines() {
             if let Some((key, value)) = line.split_once('=') {
                 let key = key.trim().to_string();
-                let value = value.trim().trim_matches('"').trim_matches('\'').to_string();
+                let value = value
+                    .trim()
+                    .trim_matches('"')
+                    .trim_matches('\'')
+                    .to_string();
                 if !key.is_empty() {
                     fields.insert(key, value);
                 }
@@ -388,18 +396,18 @@ impl LinkExtractor {
                 let text_start = i + 1;
                 if let Some(text_end) = self.find_matching_bracket(&chars, i) {
                     let text: String = chars[text_start..text_end].iter().collect();
-                    
+
                     if text_end + 1 < chars.len() && chars[text_end + 1] == '(' {
                         let target_start = text_end + 2;
                         if let Some(target_end) = self.find_matching_paren(&chars, text_end + 1) {
                             let target: String = chars[target_start..target_end].iter().collect();
-                            
+
                             links.push(Link {
                                 text,
                                 target: target.clone(),
                                 internal: !target.starts_with("http") && !target.starts_with("//"),
                             });
-                            
+
                             i = target_end + 1;
                             continue;
                         }

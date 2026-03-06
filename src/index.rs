@@ -62,8 +62,8 @@ impl Indexer {
             .build()
             .map_err(|e| Error::Index(format!("Failed to create thread pool: {}", e)))?;
 
-        let results: Vec<(Document, Vec<crate::chunk::Chunk>, HashMap<String, u32>)> = pool.install(
-            || {
+        let results: Vec<(Document, Vec<crate::chunk::Chunk>, HashMap<String, u32>)> = pool
+            .install(|| {
                 files
                     .par_iter()
                     .filter_map(|file| {
@@ -73,8 +73,7 @@ impl Indexer {
                         result
                     })
                     .collect()
-            },
-        );
+            });
 
         for (doc, chunks, terms) in results {
             stats.files_indexed += 1;
@@ -88,12 +87,16 @@ impl Indexer {
 
             // Aggregate terms
             for (term, freq) in terms {
-                let posting = all_terms.entry(term.clone()).or_insert_with(|| TermPosting {
-                    term,
-                    doc_ids: Vec::new(),
-                    total_frequency: 0,
-                });
-                posting.doc_ids.push((doc.path.to_string_lossy().to_string(), freq));
+                let posting = all_terms
+                    .entry(term.clone())
+                    .or_insert_with(|| TermPosting {
+                        term,
+                        doc_ids: Vec::new(),
+                        total_frequency: 0,
+                    });
+                posting
+                    .doc_ids
+                    .push((doc.path.to_string_lossy().to_string(), freq));
                 posting.total_frequency += freq as u64;
             }
 
@@ -241,7 +244,10 @@ impl Indexer {
                                 for (term, freq) in terms {
                                     let posting = TermPosting {
                                         term: term.clone(),
-                                        doc_ids: vec![(doc.path.to_string_lossy().to_string(), freq)],
+                                        doc_ids: vec![(
+                                            doc.path.to_string_lossy().to_string(),
+                                            freq,
+                                        )],
                                         total_frequency: freq as u64,
                                     };
                                     self.store.store_term(&term, &posting)?;
@@ -268,12 +274,12 @@ impl Indexer {
 fn is_stop_word(word: &str) -> bool {
     const STOP_WORDS: &[&str] = &[
         "the", "a", "an", "and", "or", "but", "in", "on", "at", "to", "for", "of", "with", "by",
-        "from", "as", "is", "was", "are", "were", "been", "be", "have", "has", "had", "do",
-        "does", "did", "will", "would", "could", "should", "may", "might", "must", "can", "this",
-        "that", "these", "those", "it", "its", "i", "you", "we", "they", "he", "she", "what",
-        "which", "who", "when", "where", "why", "how", "all", "each", "every", "both", "few",
-        "more", "most", "other", "some", "such", "no", "not", "only", "own", "same", "so",
-        "than", "too", "very", "just", "also", "now", "here", "there", "then", "if",
+        "from", "as", "is", "was", "are", "were", "been", "be", "have", "has", "had", "do", "does",
+        "did", "will", "would", "could", "should", "may", "might", "must", "can", "this", "that",
+        "these", "those", "it", "its", "i", "you", "we", "they", "he", "she", "what", "which",
+        "who", "when", "where", "why", "how", "all", "each", "every", "both", "few", "more",
+        "most", "other", "some", "such", "no", "not", "only", "own", "same", "so", "than", "too",
+        "very", "just", "also", "now", "here", "there", "then", "if",
     ];
 
     STOP_WORDS.contains(&word)
@@ -350,7 +356,10 @@ pub fn run_stats(index_path: PathBuf, detailed: bool) -> Result<()> {
         let chunks = store.get_all_chunks()?;
         for chunk in chunks.iter().take(10) {
             println!("  - {} ({} chars)", chunk.id, chunk.content.len());
-            println!("    Preview: {}...", chunk.content.chars().take(50).collect::<String>());
+            println!(
+                "    Preview: {}...",
+                chunk.content.chars().take(50).collect::<String>()
+            );
         }
         if chunks.len() > 10 {
             println!("  ... and {} more", chunks.len() - 10);

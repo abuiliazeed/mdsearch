@@ -1,6 +1,6 @@
 //! Benchmarks for mdsearch
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId};
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 
 fn bench_search(c: &mut Criterion) {
     // Simulate searching through chunks
@@ -14,10 +14,7 @@ fn bench_search(c: &mut Criterion) {
         |b, chunks| {
             b.iter(|| {
                 let query = "Rust";
-                let results: Vec<_> = chunks
-                    .iter()
-                    .filter(|c| c.contains(query))
-                    .collect();
+                let results: Vec<_> = chunks.iter().filter(|c| c.contains(query)).collect();
                 black_box(results)
             })
         },
@@ -59,15 +56,15 @@ More content after code block.
 fn bench_chunking(c: &mut Criterion) {
     // Simulate chunking text into pieces
     let text = "First sentence. Second sentence. Third sentence. Fourth sentence. Fifth sentence. Sixth sentence. Seventh sentence. Eighth sentence. Ninth sentence. Tenth sentence.";
-    
+
     let mut group = c.benchmark_group("chunking");
-    
+
     for size in [64, 128, 256, 512].iter() {
         group.bench_with_input(BenchmarkId::new("size", size), size, |b, &size| {
             b.iter(|| {
                 let mut chunks = Vec::new();
                 let mut current = String::new();
-                
+
                 for word in text.split_whitespace() {
                     if current.len() + word.len() + 1 > size && !current.is_empty() {
                         chunks.push(current.clone());
@@ -78,16 +75,16 @@ fn bench_chunking(c: &mut Criterion) {
                     }
                     current.push_str(word);
                 }
-                
+
                 if !current.is_empty() {
                     chunks.push(current);
                 }
-                
+
                 black_box(chunks)
             })
         });
     }
-    
+
     group.finish();
 }
 
@@ -95,13 +92,13 @@ fn bench_similarity(c: &mut Criterion) {
     // Simulate cosine similarity calculation
     let a: Vec<f32> = (0..384).map(|i| (i as f32 * 0.01).sin()).collect();
     let b: Vec<f32> = (0..384).map(|i| (i as f32 * 0.02).cos()).collect();
-    
+
     // Normalize vectors
     let norm_a: f32 = a.iter().map(|x| x * x).sum::<f32>().sqrt();
     let norm_b: f32 = b.iter().map(|x| x * x).sum::<f32>().sqrt();
     let a: Vec<f32> = a.iter().map(|x| x / norm_a).collect();
     let b: Vec<f32> = b.iter().map(|x| x / norm_b).collect();
-    
+
     c.bench_function("cosine_similarity_384d", |b| {
         b.iter(|| {
             let dot: f32 = a.iter().zip(b.iter()).map(|(x, y)| x * y).sum();
@@ -110,5 +107,11 @@ fn bench_similarity(c: &mut Criterion) {
     });
 }
 
-criterion_group!(benches, bench_search, bench_indexing, bench_chunking, bench_similarity);
+criterion_group!(
+    benches,
+    bench_search,
+    bench_indexing,
+    bench_chunking,
+    bench_similarity
+);
 criterion_main!(benches);

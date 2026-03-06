@@ -100,12 +100,8 @@ impl Chunker {
         if self.respect_structure {
             // Section-aware chunking
             for section in &doc.sections {
-                let section_chunks = self.chunk_section(
-                    section,
-                    &file_str,
-                    &metadata,
-                    &doc.sections,
-                );
+                let section_chunks =
+                    self.chunk_section(section, &file_str, &metadata, &doc.sections);
                 chunks.extend(section_chunks);
             }
         } else {
@@ -174,9 +170,9 @@ impl Chunker {
                 };
 
                 let context_after = if i < splits.len() - 1 && self.overlap > 0 {
-                    splits.get(i + 1).map(|(next, _)| {
-                        next.chars().take(self.overlap).collect()
-                    })
+                    splits
+                        .get(i + 1)
+                        .map(|(next, _)| next.chars().take(self.overlap).collect())
                 } else {
                     None
                 };
@@ -392,12 +388,14 @@ fn output_chunks(chunks: &[Chunk], format: &str, include_metadata: bool) {
             } else {
                 let simplified: Vec<_> = chunks
                     .iter()
-                    .map(|c| serde_json::json!({
-                        "id": c.id,
-                        "file": c.file,
-                        "content": c.content,
-                        "section_path": c.section_path,
-                    }))
+                    .map(|c| {
+                        serde_json::json!({
+                            "id": c.id,
+                            "file": c.file,
+                            "content": c.content,
+                            "section_path": c.section_path,
+                        })
+                    })
                     .collect();
                 println!("{}", serde_json::to_string_pretty(&simplified).unwrap());
             }

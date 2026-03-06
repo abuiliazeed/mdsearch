@@ -197,7 +197,9 @@ fn main() -> Result<()> {
             exclude,
             gitignore,
         } => {
-            index::run_index(path, index_path, threads, include, exclude, gitignore, watch)?;
+            index::run_index(
+                path, index_path, threads, include, exclude, gitignore, watch,
+            )?;
         }
         Commands::Search {
             query,

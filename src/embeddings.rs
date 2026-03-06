@@ -217,15 +217,18 @@ pub fn create_embedder(config: &EmbeddingConfig) -> Result<Box<dyn Embedder>> {
         EmbeddingProvider::OpenAI => {
             let api_key = std::env::var("OPENAI_API_KEY")
                 .map_err(|_| Error::Search("OPENAI_API_KEY not set".into()))?;
-            Ok(Box::new(OpenAIEmbedder::new(api_key, Some(config.model.clone()))))
+            Ok(Box::new(OpenAIEmbedder::new(
+                api_key,
+                Some(config.model.clone()),
+            )))
         }
         #[cfg(not(feature = "openai"))]
-        EmbeddingProvider::OpenAI => {
-            Err(Error::Search("OpenAI support not compiled in. Rebuild with --features openai".into()))
-        }
-        EmbeddingProvider::Local => {
-            Err(Error::Search("Local embeddings not yet implemented. Use 'mock' for testing.".into()))
-        }
+        EmbeddingProvider::OpenAI => Err(Error::Search(
+            "OpenAI support not compiled in. Rebuild with --features openai".into(),
+        )),
+        EmbeddingProvider::Local => Err(Error::Search(
+            "Local embeddings not yet implemented. Use 'mock' for testing.".into(),
+        )),
     }
 }
 
@@ -280,7 +283,10 @@ pub fn run_embed(
         return Ok(());
     }
 
-    println!("Generating embeddings for {} chunks...", chunks_to_embed.len());
+    println!(
+        "Generating embeddings for {} chunks...",
+        chunks_to_embed.len()
+    );
 
     // Create embedder
     let config = EmbeddingConfig {
@@ -327,7 +333,10 @@ pub fn run_embed(
 
     pb.finish_with_message(format!("Embedded {} chunks", updated));
 
-    println!("✅ Generated embeddings for {} chunks using {}", updated, provider);
+    println!(
+        "✅ Generated embeddings for {} chunks using {}",
+        updated, provider
+    );
 
     Ok(())
 }
@@ -369,8 +378,12 @@ mod tests {
     fn test_similar_texts() {
         let embedder = MockEmbedder::new(384);
 
-        let a = embedder.embed("Rust is a systems programming language").unwrap();
-        let b = embedder.embed("Rust is a systems programming language").unwrap();
+        let a = embedder
+            .embed("Rust is a systems programming language")
+            .unwrap();
+        let b = embedder
+            .embed("Rust is a systems programming language")
+            .unwrap();
         let c = embedder.embed("Bananas are yellow").unwrap();
 
         // Same text should have similarity 1.0

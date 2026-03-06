@@ -235,11 +235,7 @@ impl Searcher {
             score += count as f32;
 
             // Bonus for title/section path match
-            if chunk
-                .section_path
-                .to_lowercase()
-                .contains(&term_lower)
-            {
+            if chunk.section_path.to_lowercase().contains(&term_lower) {
                 score += 2.0;
             }
         }
