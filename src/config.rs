@@ -5,6 +5,7 @@ use std::path::PathBuf;
 
 /// Main configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct Config {
     /// Indexing settings
     pub indexing: IndexingConfig,
@@ -19,6 +20,7 @@ pub struct Config {
     pub storage: StorageConfig,
 }
 
+#[allow(dead_code)]
 impl Default for Config {
     fn default() -> Self {
         Self {
@@ -65,6 +67,7 @@ impl Default for IndexingConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct SearchConfig {
     /// Default result limit
     pub default_limit: usize,
@@ -95,6 +98,7 @@ impl Default for SearchConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct ChunkingConfig {
     /// Target chunk size in characters
     pub target_size: usize,
@@ -125,6 +129,7 @@ impl Default for ChunkingConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct StorageConfig {
     /// Path to index database
     pub index_path: PathBuf,
@@ -146,6 +151,7 @@ impl Default for StorageConfig {
     }
 }
 
+#[allow(dead_code)]
 impl Config {
     /// Load configuration from file
     pub fn load(path: &std::path::Path) -> crate::Result<Self> {

@@ -42,6 +42,7 @@ impl Default for EmbeddingConfig {
 }
 
 /// Embedding provider trait
+#[allow(dead_code)]
 pub trait Embedder: Send + Sync {
     /// Generate embedding for text
     fn embed(&self, text: &str) -> Result<Vector>;

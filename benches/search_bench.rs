@@ -90,18 +90,18 @@ fn bench_chunking(c: &mut Criterion) {
 
 fn bench_similarity(c: &mut Criterion) {
     // Simulate cosine similarity calculation
-    let a: Vec<f32> = (0..384).map(|i| (i as f32 * 0.01).sin()).collect();
-    let b: Vec<f32> = (0..384).map(|i| (i as f32 * 0.02).cos()).collect();
+    let vec_a: Vec<f32> = (0..384).map(|i| (i as f32 * 0.01).sin()).collect();
+    let vec_b: Vec<f32> = (0..384).map(|i| (i as f32 * 0.02).cos()).collect();
 
     // Normalize vectors
-    let norm_a: f32 = a.iter().map(|x| x * x).sum::<f32>().sqrt();
-    let norm_b: f32 = b.iter().map(|x| x * x).sum::<f32>().sqrt();
-    let a: Vec<f32> = a.iter().map(|x| x / norm_a).collect();
-    let b: Vec<f32> = b.iter().map(|x| x / norm_b).collect();
+    let norm_a: f32 = vec_a.iter().map(|x| x * x).sum::<f32>().sqrt();
+    let norm_b: f32 = vec_b.iter().map(|x| x * x).sum::<f32>().sqrt();
+    let vec_a: Vec<f32> = vec_a.iter().map(|x| x / norm_a).collect();
+    let vec_b: Vec<f32> = vec_b.iter().map(|x| x / norm_b).collect();
 
     c.bench_function("cosine_similarity_384d", |b| {
         b.iter(|| {
-            let dot: f32 = a.iter().zip(b.iter()).map(|(x, y)| x * y).sum();
+            let dot: f32 = vec_a.iter().zip(vec_b.iter()).map(|(x, y)| x * y).sum();
             black_box(dot)
         })
     });
