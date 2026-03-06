@@ -60,6 +60,7 @@ pub struct LocalEmbedder {
     model: candle_transformers::models::bert::BertModel,
     tokenizer: tokenizers::Tokenizer,
     device: candle_core::Device,
+    #[allow(dead_code)]
     dimensions: usize,
     model_name: String,
 }
@@ -272,6 +273,7 @@ impl LocalEmbedder {
 }
 
 /// Available local models (safetensors format)
+#[allow(dead_code)]
 pub const AVAILABLE_MODELS: &[(&str, usize)] = &[
     // (model_id, dimensions)
     ("sentence-transformers/all-MiniLM-L6-v2", 384),

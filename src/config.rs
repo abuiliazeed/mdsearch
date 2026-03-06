@@ -6,6 +6,7 @@ use std::path::PathBuf;
 /// Main configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[allow(dead_code)]
+#[derive(Default)]
 pub struct Config {
     /// Indexing settings
     pub indexing: IndexingConfig,
@@ -21,17 +22,6 @@ pub struct Config {
 }
 
 #[allow(dead_code)]
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            indexing: IndexingConfig::default(),
-            search: SearchConfig::default(),
-            chunking: ChunkingConfig::default(),
-            storage: StorageConfig::default(),
-        }
-    }
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IndexingConfig {
     /// Number of parallel threads (0 = auto)

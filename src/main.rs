@@ -304,9 +304,7 @@ fn main() -> Result<()> {
 }
 
 fn run_model_command(command: ModelCommands) -> Result<()> {
-    use mdsearch::local_embeddings::{
-        self, default_cache_dir, parse_model_string, LocalEmbedder, LocalModelConfig,
-    };
+    use mdsearch::local_embeddings::{self, default_cache_dir, LocalEmbedder, LocalModelConfig};
 
     match command {
         ModelCommands::List => {

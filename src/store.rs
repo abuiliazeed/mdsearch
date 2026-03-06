@@ -107,7 +107,7 @@ impl Store {
         let cf = self.cf_handle(keys::METADATA)?;
         if self.db.get_cf(&cf, b"index_meta")?.is_none() {
             let metadata = IndexMetadata::default();
-            self.put_value(&cf, b"index_meta", &metadata)?;
+            self.put_value(cf, b"index_meta", &metadata)?;
         }
         Ok(())
     }
@@ -159,7 +159,7 @@ impl Store {
     /// Get index metadata
     pub fn metadata(&self) -> Result<IndexMetadata> {
         let cf = self.cf_handle(keys::METADATA)?;
-        self.get_value(&cf, b"index_meta")?
+        self.get_value(cf, b"index_meta")?
             .ok_or_else(|| Error::Storage("Metadata not found".into()))
     }
 
@@ -172,7 +172,7 @@ impl Store {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_secs();
-        self.put_value(&cf, b"index_meta", &metadata)
+        self.put_value(cf, b"index_meta", &metadata)
     }
 
     /// Index a document
@@ -191,7 +191,7 @@ impl Store {
         };
 
         let key = doc.path.to_string_lossy();
-        self.put_value(&cf, key.as_bytes(), &record)?;
+        self.put_value(cf, key.as_bytes(), &record)?;
 
         // Update metadata
         self.update_metadata(|m| {
@@ -202,9 +202,10 @@ impl Store {
     }
 
     /// Store a chunk
+    #[allow(dead_code)]
     pub fn store_chunk(&self, chunk: &Chunk) -> Result<()> {
         let cf = self.cf_handle(keys::CHUNKS)?;
-        self.put_value(&cf, chunk.id.as_bytes(), chunk)?;
+        self.put_value(cf, chunk.id.as_bytes(), chunk)?;
 
         self.update_metadata(|m| {
             m.chunk_count += 1;
@@ -230,15 +231,16 @@ impl Store {
     }
 
     /// Get a chunk by ID
+    #[allow(dead_code)]
     pub fn get_chunk(&self, id: &str) -> Result<Option<Chunk>> {
         let cf = self.cf_handle(keys::CHUNKS)?;
-        self.get_value(&cf, id.as_bytes())
+        self.get_value(cf, id.as_bytes())
     }
 
     /// Update a chunk (with embedding)
     pub fn update_chunk(&self, chunk: &Chunk) -> Result<()> {
         let cf = self.cf_handle(keys::CHUNKS)?;
-        self.put_value(&cf, chunk.id.as_bytes(), chunk)
+        self.put_value(cf, chunk.id.as_bytes(), chunk)
     }
 
     /// Get all chunks
@@ -292,13 +294,13 @@ impl Store {
     /// Store term posting
     pub fn store_term(&self, term: &str, posting: &TermPosting) -> Result<()> {
         let cf = self.cf_handle(keys::TERMS)?;
-        self.put_value(&cf, term.as_bytes(), posting)
+        self.put_value(cf, term.as_bytes(), posting)
     }
 
     /// Get term posting
     pub fn get_term(&self, term: &str) -> Result<Option<TermPosting>> {
         let cf = self.cf_handle(keys::TERMS)?;
-        self.get_value(&cf, term.as_bytes())
+        self.get_value(cf, term.as_bytes())
     }
 
     /// Search for chunks containing text (basic implementation)
@@ -327,7 +329,7 @@ impl Store {
     /// Get document by path
     pub fn get_document(&self, path: &str) -> Result<Option<DocumentRecord>> {
         let cf = self.cf_handle(keys::DOCUMENTS)?;
-        self.get_value(&cf, path.as_bytes())
+        self.get_value(cf, path.as_bytes())
     }
 
     /// List all documents
@@ -389,7 +391,7 @@ impl Store {
 
         // Reset metadata
         let cf = self.cf_handle(keys::METADATA)?;
-        self.put_value(&cf, b"index_meta", &IndexMetadata::default())?;
+        self.put_value(cf, b"index_meta", &IndexMetadata::default())?;
 
         Ok(())
     }
