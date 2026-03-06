@@ -5,6 +5,7 @@ use crate::config::IndexingConfig;
 use crate::error::{Error, Result};
 use crate::parser::{Document, Parser};
 use crate::store::{Store, TermPosting};
+use glob::Pattern;
 use indicatif::{ProgressBar, ProgressStyle};
 use rayon::prelude::*;
 use std::collections::HashMap;
@@ -17,17 +18,43 @@ pub struct Indexer {
     store: Store,
     parser: Parser,
     chunker: Chunker,
+    include_patterns: Vec<Pattern>,
+    exclude_patterns: Vec<Pattern>,
 }
 
 impl Indexer {
     /// Create a new indexer
-    pub fn new(store: Store, config: IndexingConfig) -> Self {
-        Self {
+    pub fn new(store: Store, config: IndexingConfig) -> Result<Self> {
+        // Compile include patterns
+        let include_patterns = config
+            .include_patterns
+            .iter()
+            .map(|p| {
+                Pattern::new(p).map_err(|e| {
+                    Error::Index(format!("Invalid include pattern '{}': {}", p, e))
+                })
+            })
+            .collect::<Result<Vec<_>>>()?;
+
+        // Compile exclude patterns
+        let exclude_patterns = config
+            .exclude_patterns
+            .iter()
+            .map(|p| {
+                Pattern::new(p).map_err(|e| {
+                    Error::Index(format!("Invalid exclude pattern '{}': {}", p, e))
+                })
+            })
+            .collect::<Result<Vec<_>>>()?;
+
+        Ok(Self {
             config,
             store,
             parser: Parser::new(),
             chunker: Chunker::new(512, 50),
-        }
+            include_patterns,
+            exclude_patterns,
+        })
     }
 
     /// Index all markdown files in a directory
@@ -176,9 +203,9 @@ impl Indexer {
         for result in builder.build() {
             match result {
                 Ok(entry) => {
-                    let path = entry.path();
-                    if self.is_markdown_file(path) {
-                        files.push(path.to_path_buf());
+                    let entry_path = entry.path();
+                    if entry_path.is_file() && self.matches_filters(entry_path) {
+                        files.push(entry_path.to_path_buf());
                     }
                 }
                 Err(err) => {
@@ -188,6 +215,31 @@ impl Indexer {
         }
 
         Ok(files)
+    }
+
+    /// Check if a file matches include/exclude filters
+    fn matches_filters(&self, path: &Path) -> bool {
+        // Check exclude patterns first - if any exclude matches, skip the file
+        for pattern in &self.exclude_patterns {
+            if pattern.matches_path(path) {
+                debug!("Excluding file (pattern): {:?}", path);
+                return false;
+            }
+        }
+
+        // If no include patterns specified, accept all files that pass exclude
+        if self.include_patterns.is_empty() {
+            return self.is_markdown_file(path);
+        }
+
+        // Check include patterns - file must match at least one
+        for pattern in &self.include_patterns {
+            if pattern.matches_path(path) {
+                return true;
+            }
+        }
+
+        false
     }
 
     fn is_markdown_file(&self, path: &Path) -> bool {
@@ -233,11 +285,11 @@ impl Indexer {
         loop {
             match rx.recv() {
                 Ok(Ok(event)) => {
-                    if let Some(path) = event.paths.first() {
-                        if self.is_markdown_file(path) {
-                            debug!("File changed: {:?}", path);
+                    if let Some(entry_path) = event.paths.first() {
+                        if entry_path.is_file() && self.matches_filters(entry_path) {
+                            debug!("File changed: {:?}", entry_path);
                             // Reindex the file
-                            if let Some((doc, chunks, terms)) = self.index_file_internal(path) {
+                            if let Some((doc, chunks, terms)) = self.index_file_internal(entry_path) {
                                 self.store.index_document(&doc)?;
                                 self.store.store_chunks_batch(&chunks)?;
 
@@ -253,7 +305,7 @@ impl Indexer {
                                     self.store.store_term(&term, &posting)?;
                                 }
 
-                                info!("Reindexed: {:?}", path);
+                                info!("Reindexed: {:?}", entry_path);
                             }
                         }
                     }
@@ -315,7 +367,7 @@ pub fn run_index(
     config.respect_gitignore = gitignore;
 
     let store = Store::open(&index_path)?;
-    let indexer = Indexer::new(store, config);
+    let indexer = Indexer::new(store, config)?;
 
     let stats = indexer.index_directory(&path)?;
 
